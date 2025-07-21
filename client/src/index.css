@@ -1,0 +1,26 @@
+/* Global Styles for Multiplayer Game Lobby */
+:root {
+  --color-primary: #1E88E5;
+  --color-secondary: #43A047;
+  --color-accent: #FFC107;
+  --color-bg: #F7F9FC;
+  --color-surface: #FFFFFF;
+  --color-text-primary: #212121;
+  --color-text-secondary: #424242;
+  --radius: 12px;
+  --shadow: 0 2px 8px rgba(30, 136, 229, 0.08);
+  --spacing: 16px;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  font-family: 'Inter', 'Roboto', Arial, sans-serif;
+  color: var(--color-text-primary);
+}
+
+* {
+  box-sizing: border-box;
+}
