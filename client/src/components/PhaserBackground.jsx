@@ -8,27 +8,31 @@ class LandscapeScene extends Phaser.Scene {
 
   init(data) {
     // Store asset URLs passed from React
-    this.assetUrls = data;
+    this.assets = data.assets;
   }
 
   preload() {
     // Use Phaser's loader within the preload hook
-    this.load.image('sky', this.assetUrls.sky);
-    this.load.image('mountains', this.assetUrls.mountains);
-    this.load.image('clouds', this.assetUrls.clouds);
+    this.assets.forEach(asset => {
+      if (asset.type === 'image') {
+        this.load.image(asset.key, asset.url);
+      }
+    });
   }
 
   create() {
     const { width, height } = this.sys.game.config;
 
     this.add.image(width / 2, height / 2, 'sky').setScale(2);
-    this.mountains = this.add.tileSprite(0, height, width, 512, 'mountains').setOrigin(0, 1).setScrollFactor(0);
+    this.add.image(width / 2, height, 'mountains').setOrigin(0.5, 1).setScale(1);
+
     this.clouds = this.add.tileSprite(0, 100, width, 256, 'clouds').setOrigin(0, 0).setScrollFactor(0);
+    this.trees = this.add.tileSprite(0, height, width, 288, 'trees').setOrigin(0, 1).setScrollFactor(0);
   }
 
   update(time, delta) {
-    this.mountains.tilePositionX += 0.1;
     this.clouds.tilePositionX += 0.25;
+    this.trees.tilePositionX += 0.5;
   }
 }
 
@@ -53,7 +57,7 @@ const PhaserBackground = ({ assets }) => {
     };
 
     gameRef.current = new Phaser.Game(config);
-    gameRef.current.scene.start('LandscapeScene', assets);
+    gameRef.current.scene.start('LandscapeScene', { assets });
 
     const handleResize = () => {
       if (gameRef.current) {

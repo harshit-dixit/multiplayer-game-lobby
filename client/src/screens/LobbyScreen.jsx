@@ -5,9 +5,10 @@ import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import { AppContext } from '../context/AppContext';
+import WaitingRoom from '../components/WaitingRoom';
 
 const LobbyScreen = () => {
-  const { socket, room } = useContext(AppContext);
+  const { socket, room, player, gameHasStarted } = useContext(AppContext);
   const navigate = useNavigate();
   const { gameType, roomCode: roomCodeParam } = useParams();
 
@@ -15,13 +16,12 @@ const LobbyScreen = () => {
   const [roomCode, setRoomCode] = useState(roomCodeParam || '');
   const [view, setView] = useState(roomCodeParam ? 'join' : 'create');
 
-  // This effect will run when the 'room' object in our global state changes.
-  // It ensures we only navigate AFTER we have successfully joined a room.
+  // Navigate to the game screen only when the game has officially started
   useEffect(() => {
-    if (room && room.roomCode) {
+    if (gameHasStarted && room && room.roomCode) {
       navigate(`/game/${room.gameType}/${room.roomCode}`);
     }
-  }, [room, navigate]);
+  }, [gameHasStarted, room, navigate]);
 
   useEffect(() => {
     if (roomCodeParam) {
@@ -39,6 +39,34 @@ const LobbyScreen = () => {
     e.preventDefault();
     socket.emit('joinRoom', { name, roomCode, gameType });
   };
+
+  // Add symbol selection handler
+  const handleChooseSymbol = (symbol) => {
+    if (room && room.roomCode) {
+      socket.emit('chooseSymbol', { roomCode: room.roomCode, symbol });
+    }
+  };
+  // Add start game handler
+  const handleStartGame = () => {
+    if (room && room.roomCode) {
+      socket.emit('startGame', { roomCode: room.roomCode });
+    }
+  };
+  // Show WaitingRoom if room exists and has players
+  if (room && room.players && room.players.length > 0) {
+    return (
+      <div className="app-container" style={{ position: 'relative', zIndex: 1, backgroundColor: 'transparent' }}>
+        <Card style={{ width: 'clamp(300px, 50vw, 450px)', textAlign: 'center' }}>
+          <WaitingRoom
+            room={room}
+            player={player}
+            onChooseSymbol={handleChooseSymbol}
+            onStartGame={handleStartGame}
+          />
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container" style={{ position: 'relative', zIndex: 1, backgroundColor: 'transparent' }}>

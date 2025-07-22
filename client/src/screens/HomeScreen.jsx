@@ -14,7 +14,7 @@ const HomeScreen = () => {
         <Card>
           <h2 style={{ color: 'var(--color-primary)', fontSize: '1.5rem', marginBottom: '0.5rem' }}>Tic-Tac-Toe</h2>
           <p style={{ fontSize: '1rem', color: 'var(--color-text-secondary)' }}>Classic 3x3 grid game. Play with a friend online!</p>
-          <button className="button" style={{ marginTop: '1rem' }} onClick={() => navigate('/lobby/tictactoe')}>Create / Join</button>
+          <button className="button" style={{ marginTop: '1rem' }} onClick={() => navigate('/lobby/TicTacToe')}>Create / Join</button>
         </Card>
         <Card>
           <h2 style={{ color: 'var(--color-secondary)', fontSize: '1.5rem', marginBottom: '0.5rem' }}>Connect Four</h2>

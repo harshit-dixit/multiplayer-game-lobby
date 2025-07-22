@@ -33,6 +33,7 @@ class TicTacToeScene extends Phaser.Scene {
     const index = y * 3 + x;
     
     // Emit event to React component
+    console.log('[Phaser] Click detected at index:', index);
     this.game.events.emit('makeMove', { index });
   }
 
@@ -58,6 +59,11 @@ const GameScreen = () => {
   const { socket, gameState, room, gameOver, setGameOver } = useContext(AppContext);
   const { roomCode } = useParams();
   const phaserGame = useRef(null);
+  const gameOverRef = useRef(gameOver);
+
+  useEffect(() => {
+    gameOverRef.current = gameOver;
+  }, [gameOver]);
 
   useEffect(() => {
     const config = {
@@ -73,14 +79,15 @@ const GameScreen = () => {
 
     phaserGame.current.events.on('makeMove', ({ index }) => {
       // Prevent moves if the game is over
-      if (gameOver) return;
+      if (gameOverRef.current) return;
+      console.log('[React] makeMove event received, emitting to server with index:', index);
       socket.emit('makeMove', { roomCode, index });
     });
 
     return () => {
       phaserGame.current.destroy(true);
     };
-  }, [socket, roomCode, gameOver]); // Add gameOver to dependency array
+  }, [socket, roomCode]); 
 
   useEffect(() => {
     if (gameState && phaserGame.current.scene.scenes[0]) {
@@ -88,15 +95,41 @@ const GameScreen = () => {
     }
   }, [gameState]);
 
-  const handlePlayAgain = () => {
-    // We will now only emit the 'playAgain' event.
-    // The server will handle resetting the state, and the
-    // client will receive the new state via the 'gameStarted' event.
-    socket.emit('playAgain', { roomCode });
-  };
-
   if (!gameState || !room) {
     return <div>Loading...</div>;
+  }
+
+  // Find player info by symbol
+  const getPlayerBySymbol = (symbol) => room.players.find((p) => p.symbol === symbol);
+  // Find current turn player
+  const turnPlayer = getPlayerBySymbol(gameState.turn);
+  // Find local player
+  const localPlayer = room.players.find((p) => p.id === socket.id);
+
+  // Scoreboard
+  const renderScores = () => (
+    <div style={{ marginBottom: '1rem', fontWeight: 'bold' }}>
+      <span>Scores: </span>
+      {room.players.map((p, i) => (
+        <span key={p.id} style={{ marginRight: 12 }}>
+          {p.name} ({p.symbol}): {typeof p.score === 'number' ? p.score : 0}
+        </span>
+      ))}
+    </div>
+  );
+
+  // Win/Draw message
+  let resultMessage = null;
+  if (gameOver) {
+    if (gameOver.winner) {
+      if (localPlayer && gameOver.winner === localPlayer.name) {
+        resultMessage = 'You won!';
+      } else {
+        resultMessage = `${gameOver.winner} Won.`;
+      }
+    } else if (gameOver.isDraw) {
+      resultMessage = "It's a Draw!";
+    }
   }
 
   return (
@@ -104,19 +137,16 @@ const GameScreen = () => {
       <Card style={{ width: 'clamp(300px, 80vw, 500px)', textAlign: 'center' }}>
         <h1 style={{ color: 'var(--color-primary)' }}>Tic-Tac-Toe</h1>
         <h2 style={{ marginBottom: '1rem' }}>Room: {roomCode}</h2>
+        {renderScores()}
         <div id="phaser-container" style={{ width: 400, height: 400, margin: 'auto', pointerEvents: gameOver ? 'none' : 'auto' }} />
-        
         {gameOver ? (
           <div style={{ marginTop: '1rem' }}>
-            <h3 style={{ fontSize: '1.5rem', color: 'var(--color-secondary)' }}>
-              {gameOver.winner ? `Player ${gameOver.winner} Wins!` : "It's a Draw!"}
-            </h3>
-            <Button onClick={handlePlayAgain} style={{ marginTop: '1rem' }}>
-              Play Again
-            </Button>
+            <h3 style={{ fontSize: '1.5rem', color: 'var(--color-secondary)' }}>{resultMessage}</h3>
           </div>
         ) : (
-          <h3 style={{ marginTop: '1rem' }}>Turn: {gameState.turn}</h3>
+          <h3 style={{ marginTop: '1rem' }}>
+            {turnPlayer ? `${turnPlayer.name}'s Turn (${turnPlayer.symbol})` : `Turn: ${gameState.turn}`}
+          </h3>
         )}
       </Card>
     </div>
