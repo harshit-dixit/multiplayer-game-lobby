@@ -86,7 +86,7 @@ io.on('connection', (socket) => {
       room.state.turn = 'X';
       io.to(roomCode).emit('gameStarted', { state: room.state, players: room.players });
     } else {
-      socket.emit('error', 'Both players must choose a symbol');
+      socket.emit('error', 'Both players must choose a symbol before starting the game.');
     }
   });
 
@@ -99,31 +99,65 @@ io.on('connection', (socket) => {
       return;
     }
     if (room.state.turn === player.symbol) {
-      const { state, winner, isDraw } = makeMove(room.state, index, player.symbol);
+      const { state, winner, isDraw, combination } = makeMove(room.state, index, player.symbol);
       room.state = state;
       io.to(roomCode).emit('moveMade', { state });
       if (winner) {
         // Find winner by symbol
         const winnerPlayer = room.players.find((p) => p.symbol === winner);
         if (winnerPlayer) winnerPlayer.score += 1;
-        io.to(roomCode).emit('gameOver', { winner: winnerPlayer ? winnerPlayer.name : winner, winnerSymbol: winner, scores: room.players.map(p => ({ name: p.name, symbol: p.symbol, score: p.score })), state });
-        setTimeout(() => {
-          room.state = createGame();
-          io.to(roomCode).emit('gameStarted', { state: room.state, players: room.players });
-        }, 3000);
+        io.to(roomCode).emit('gameOver', { winner: winnerPlayer ? winnerPlayer.name : winner, winnerSymbol: winner, combination, scores: room.players.map(p => ({ name: p.name, symbol: p.symbol, score: p.score })), state });
       } else if (isDraw) {
         io.to(roomCode).emit('gameOver', { isDraw, scores: room.players.map(p => ({ name: p.name, symbol: p.symbol, score: p.score })), state });
-        setTimeout(() => {
-          room.state = createGame();
-          io.to(roomCode).emit('gameStarted', { state: room.state, players: room.players });
-        }, 3000);
+      }
+    }
+  });
+
+  socket.on('requestRematch', ({ roomCode }) => {
+    const room = rooms.get(roomCode);
+    if (room) {
+      const player = room.players.find(p => p.id === socket.id);
+      if (!room.rematchRequestedBy) {
+        room.rematchRequestedBy = player;
+        io.to(roomCode).emit('rematchRequested', { requestedBy: player });
+      } else if (room.rematchRequestedBy.id !== player.id) {
+        // Both players have requested a rematch, start a new game
+        room.state = createGame();
+        // Keep the same symbols
+        io.to(roomCode).emit('gameStarted', { state: room.state, players: room.players });
+        delete room.rematchRequestedBy; // Reset for next rematch
+      }
+    }
+  });
+
+  socket.on('leaveRoom', ({ roomCode }) => {
+    const room = rooms.get(roomCode);
+    if (room) {
+      room.players = room.players.filter((p) => p.id !== socket.id);
+      if (room.players.length < 2) {
+        socket.to(roomCode).emit('opponentLeft');
+        rooms.delete(roomCode);
+      } else {
+        io.to(roomCode).emit('playerLeft', { players: room.players });
       }
     }
   });
 
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
-    // Handle player disconnection from rooms
+    const roomCode = rooms.findRoomByPlayer(socket.id);
+    if (roomCode) {
+      const room = rooms.get(roomCode);
+      if (room) {
+        room.players = room.players.filter((p) => p.id !== socket.id);
+        if (room.players.length < 2) {
+          socket.to(roomCode).emit('opponentLeft');
+          rooms.delete(roomCode);
+        } else {
+          io.to(roomCode).emit('playerLeft', { players: room.players });
+        }
+      }
+    }
   });
 });
 

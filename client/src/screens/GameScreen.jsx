@@ -1,152 +1,217 @@
-import React, { useEffect, useRef, useContext } from 'react';
-import { useParams } from 'react-router-dom';
-import Phaser from 'phaser';
+import React, { useContext, useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import Confetti from 'react-confetti';
+import { Howl } from 'howler';
 import { AppContext } from '../context/AppContext';
 import Card from '../components/ui/Card';
-import Button from '../components/ui/Button'; // Import the Button component
+import Button from '../components/ui/Button';
+import WinningLine from '../components/WinningLine';
 
-class TicTacToeScene extends Phaser.Scene {
-  constructor() {
-    super({ key: 'TicTacToeScene' });
-  }
+import placeSound from '../assets/sounds/place.mp3';
+import winSound from '../assets/sounds/win.mp3';
+import drawSound from '../assets/sounds/draw.mp3';
 
-  create() {
-    this.board = this.add.graphics();
-    this.drawBoard();
-
-    this.input.on('pointerdown', this.handlePointerDown, this);
-  }
-
-  drawBoard() {
-    this.board.lineStyle(5, 0x424242, 1); // Changed to a visible dark grey
-    // Vertical lines
-    this.board.lineBetween(133, 0, 133, 400);
-    this.board.lineBetween(266, 0, 266, 400);
-    // Horizontal lines
-    this.board.lineBetween(0, 133, 400, 133);
-    this.board.lineBetween(0, 266, 400, 266);
-  }
-
-  handlePointerDown(pointer) {
-    const x = Math.floor(pointer.x / 133);
-    const y = Math.floor(pointer.y / 133);
-    const index = y * 3 + x;
-    
-    // Emit event to React component
-    console.log('[Phaser] Click detected at index:', index);
-    this.game.events.emit('makeMove', { index });
-  }
-
-  updateBoard(boardState) {
-    // Clear existing symbols before redrawing
-    if (this.symbols) {
-      this.symbols.forEach(symbol => symbol.destroy());
-    }
-    this.symbols = [];
-
-    boardState.forEach((cell, index) => {
-      if (cell) {
-        const x = (index % 3) * 133 + 66.5;
-        const y = Math.floor(index / 3) * 133 + 66.5;
-        const symbol = this.add.text(x, y, cell, { fontSize: '100px', color: '#212121' }).setOrigin(0.5); // Changed to a visible dark color
-        this.symbols.push(symbol);
-      }
-    });
-  }
-}
+const sounds = {
+  place: new Howl({ src: [placeSound] }),
+  win: new Howl({ src: [winSound] }),
+  draw: new Howl({ src: [drawSound] }),
+};
 
 const GameScreen = () => {
-  const { socket, gameState, room, gameOver, setGameOver } = useContext(AppContext);
+  const { socket, gameState, room, gameOver, player, rematch } = useContext(AppContext);
   const { roomCode } = useParams();
-  const phaserGame = useRef(null);
-  const gameOverRef = useRef(gameOver);
+  const [isConnected, setIsConnected] = useState(socket.connected);
+  const [opponentLeft, setOpponentLeft] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    gameOverRef.current = gameOver;
-  }, [gameOver]);
+    const onConnect = () => setIsConnected(true);
+    const onDisconnect = () => setIsConnected(false);
 
-  useEffect(() => {
-    const config = {
-      type: Phaser.AUTO,
-      width: 400,
-      height: 400,
-      transparent: true,
-      scene: TicTacToeScene,
-      parent: 'phaser-container',
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('opponentLeft', () => setOpponentLeft(true));
+
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('opponentLeft');
     };
+  }, [socket]);
 
-    phaserGame.current = new Phaser.Game(config);
-
-    phaserGame.current.events.on('makeMove', ({ index }) => {
-      // Prevent moves if the game is over
-      if (gameOverRef.current) return;
-      console.log('[React] makeMove event received, emitting to server with index:', index);
-      socket.emit('makeMove', { roomCode, index });
+  useEffect(() => {
+    socket.on('roomJoined', (room) => {
+      navigate(`/lobby/${room.gameType}/${room.roomCode}`);
     });
 
     return () => {
-      phaserGame.current.destroy(true);
-    };
-  }, [socket, roomCode]); 
+      socket.off('roomJoined');
+    }
+  }, [socket, navigate]);
 
   useEffect(() => {
-    if (gameState && phaserGame.current.scene.scenes[0]) {
-      phaserGame.current.scene.scenes[0].updateBoard(gameState.board);
+    if (gameOver) {
+      if (gameOver.winner) {
+        sounds.win.play();
+      } else if (gameOver.isDraw) {
+        sounds.draw.play();
+      }
     }
-  }, [gameState]);
+  }, [gameOver]);
+  
+  useEffect(() => {
+    sounds.place.play();
+  }, [gameState.board]);
 
-  if (!gameState || !room) {
+
+  if (!gameState || !room || !player) {
     return <div>Loading...</div>;
   }
 
-  // Find player info by symbol
   const getPlayerBySymbol = (symbol) => room.players.find((p) => p.symbol === symbol);
-  // Find current turn player
   const turnPlayer = getPlayerBySymbol(gameState.turn);
-  // Find local player
   const localPlayer = room.players.find((p) => p.id === socket.id);
 
-  // Scoreboard
-  const renderScores = () => (
-    <div style={{ marginBottom: '1rem', fontWeight: 'bold' }}>
-      <span>Scores: </span>
-      {room.players.map((p, i) => (
-        <span key={p.id} style={{ marginRight: 12 }}>
-          {p.name} ({p.symbol}): {typeof p.score === 'number' ? p.score : 0}
-        </span>
-      ))}
-    </div>
-  );
+  const handleMakeMove = (index) => {
+    if (!gameOver && gameState.board[index] === null && localPlayer?.id === turnPlayer?.id) {
+      socket.emit('makeMove', { roomCode, index });
+    }
+  };
 
-  // Win/Draw message
+  const handleRematch = () => {
+    socket.emit('requestRematch', { roomCode });
+  };
+
+  const handleLeaveRoom = () => {
+    socket.emit('leaveRoom', { roomCode });
+    navigate('/');
+  };
+
   let resultMessage = null;
+  let isWinner = false;
   if (gameOver) {
     if (gameOver.winner) {
-      if (localPlayer && gameOver.winner === localPlayer.name) {
-        resultMessage = 'You won!';
-      } else {
-        resultMessage = `${gameOver.winner} Won.`;
-      }
+      const winnerPlayer = room.players.find(p => p.symbol === gameOver.winnerSymbol);
+      isWinner = winnerPlayer?.id === socket.id;
+      resultMessage = isWinner ? "You Won!" : `${winnerPlayer?.name} Won!`;
     } else if (gameOver.isDraw) {
       resultMessage = "It's a Draw!";
     }
   }
 
+  if (opponentLeft) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <Card style={{ textAlign: 'center' }}>
+          <h2>Opponent has left the game.</h2>
+          <Button onClick={() => navigate('/')}>Go to Home</Button>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <div className="app-container" style={{ position: 'relative', zIndex: 1, backgroundColor: 'transparent' }}>
-      <Card style={{ width: 'clamp(300px, 80vw, 500px)', textAlign: 'center' }}>
-        <h1 style={{ color: 'var(--color-primary)' }}>Tic-Tac-Toe</h1>
-        <h2 style={{ marginBottom: '1rem' }}>Room: {roomCode}</h2>
-        {renderScores()}
-        <div id="phaser-container" style={{ width: 400, height: 400, margin: 'auto', pointerEvents: gameOver ? 'none' : 'auto' }} />
+    <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: '1rem' }}>
+      {gameOver && (
+        <div style={{ position: 'absolute', top: '2rem', left: '2rem' }}>
+          <Button 
+            onClick={handleLeaveRoom}
+            variant="secondary"
+            style={{ padding: '0.5rem' }}
+          >
+            Home
+          </Button>
+        </div>
+      )}
+      <Card style={{ width: 'clamp(350px, 90vw, 450px)', textAlign: 'center' }}>
+        <h1 style={{ color: 'var(--color-accent)', marginBottom: '0.5rem', textShadow: '3px 3px 0px rgba(0,0,0,0.2)' }}>Tic-Tac-Toe</h1>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-around',
+          marginBottom: '1.5rem',
+          backgroundColor: 'var(--color-background)',
+          padding: '0.5rem',
+          borderRadius: 'var(--border-radius)',
+          boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.4)'
+        }}>
+          {room.players.map((p) => (
+            <div key={p.id} style={{
+              padding: '0.25rem 0.5rem',
+              borderRadius: 'var(--border-radius)',
+              transition: 'all 0.3s ease',
+              backgroundColor: gameState.turn === p.symbol ? 'var(--color-primary)' : 'transparent',
+              color: gameState.turn === p.symbol ? 'white' : 'var(--color-text)'
+            }}>
+              <span style={{ fontWeight: 'bold' }}>{p.name} ({p.symbol})</span>: {p.score}
+            </div>
+          ))}
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gridTemplateRows: 'repeat(3, 1fr)',
+          gap: '10px',
+          aspectRatio: '1 / 1',
+          marginBottom: '1.5rem',
+          position: 'relative', // This will contain the absolutely positioned WinningLine
+        }}>
+          {gameState.board.map((cell, index) => {
+            const isClickable = gameState.board[index] === null && !gameOver && localPlayer?.id === turnPlayer?.id;
+            return (
+              <div
+                key={index}
+                onClick={() => handleMakeMove(index)}
+                style={{
+                  backgroundColor: 'var(--color-background)',
+                  borderRadius: 'var(--border-radius)',
+                  boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.4)',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  fontSize: 'clamp(2rem, 15vw, 5rem)',
+                  color: cell === 'X' ? 'var(--color-primary)' : 'var(--color-secondary)',
+                  cursor: isClickable ? 'pointer' : 'not-allowed',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={(e) => { if (isClickable) e.currentTarget.style.backgroundColor = '#2d3748'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-background)'; }}
+              >
+                {cell && <span style={{ textShadow: `0 0 10px ${cell === 'X' ? 'var(--color-primary)' : 'var(--color-secondary)'}` }}>{cell}</span>}
+              </div>
+            );
+          })}
+          <WinningLine gameOver={gameOver} />
+        </div>
+
+        {gameOver && isWinner && (
+          <Confetti
+            width={window.innerWidth}
+            height={window.innerHeight}
+            recycle={false}
+            numberOfPieces={400}
+          />
+        )}
+        
         {gameOver ? (
-          <div style={{ marginTop: '1rem' }}>
-            <h3 style={{ fontSize: '1.5rem', color: 'var(--color-secondary)' }}>{resultMessage}</h3>
+          <div>
+            <h2 style={{ 
+              color: isWinner ? 'var(--color-accent)' : (gameOver.winner ? 'var(--color-error)' : 'var(--color-accent)'), 
+              marginBottom: '1rem', 
+              fontSize: '2rem' 
+            }}>
+              {isWinner ? "You Won!" : (gameOver.winner ? "You Lost!" : "It's a Draw!")}
+            </h2>
+            <Button 
+              onClick={handleRematch} 
+              style={{ width: '100%' }} 
+              disabled={!isConnected || (rematch.requestedBy && rematch.requestedBy.id === player.id)}
+            >
+              {rematch.requestedBy ? (rematch.requestedBy.id === player.id ? "Waiting for Opponent..." : "Accept Rematch") : "Rematch"}
+            </Button>
           </div>
         ) : (
-          <h3 style={{ marginTop: '1rem' }}>
-            {turnPlayer ? `${turnPlayer.name}'s Turn (${turnPlayer.symbol})` : `Turn: ${gameState.turn}`}
-          </h3>
+          <h2 style={{ fontSize: '1.8rem' }}>{turnPlayer?.id === socket.id ? "Your Turn" : `${turnPlayer?.name}'s Turn`}</h2>
         )}
       </Card>
     </div>

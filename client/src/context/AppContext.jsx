@@ -1,5 +1,6 @@
 import { createContext, useState, useEffect } from 'react';
 import { socket } from '../socket';
+import { useNavigate } from 'react-router-dom';
 
 export const AppContext = createContext();
 
@@ -7,59 +8,63 @@ export const AppProvider = ({ children }) => {
   const [player, setPlayer] = useState(null);
   const [room, setRoom] = useState(null);
   const [gameState, setGameState] = useState(null);
-  const [gameOver, setGameOver] = useState(null); // { winner: 'X' } or { isDraw: true }
+  const [gameOver, setGameOver] = useState(null);
   const [gameHasStarted, setGameHasStarted] = useState(false);
+  const [error, setError] = useState(null);
+  const [rematch, setRematch] = useState({ requestedBy: null, acceptedBy: null });
+
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const onRoomCreated = ({ room, player }) => {
+    const onRoomCreated = ({ room }) => {
       setRoom(room);
-      setPlayer(player);
+      setPlayer(room.players[0]);
       setGameState(room.state);
-      setGameHasStarted(false); // Reset on new room
     };
 
-    const onRoomJoined = ({ room, player }) => {
+    const onJoinedRoom = ({ room, player }) => {
       setRoom(room);
       setPlayer(player);
       setGameState(room.state);
-      setGameHasStarted(false); // Reset on new room
+      setGameHasStarted(false); // Explicitly set game as not started
+      navigate(`/lobby/${room.gameType}/${room.roomCode}`);
     };
 
     const onPlayerJoined = ({ player: newPlayer }) => {
-      setRoom((prevRoom) => ({
-        ...prevRoom,
-        players: [...prevRoom.players, newPlayer],
-      }));
+      setRoom((prevRoom) => {
+        if (!prevRoom) return null;
+        return {
+          ...prevRoom,
+          players: [...prevRoom.players, newPlayer],
+        }
+      });
     };
 
-    // New: handle symbol selection updates
     const onSymbolChosen = ({ players }) => {
       setRoom((prevRoom) => ({
         ...prevRoom,
         players,
       }));
-      // If this client is one of the players, update their symbol
       const me = players.find((p) => p.id === socket.id);
       if (me) setPlayer(me);
     };
 
-    // Updated: handle new gameStarted payload
     const onGameStarted = (data) => {
       setGameState(data.state);
       setGameOver(null);
       if (data.players) {
         setRoom((prevRoom) => ({ ...prevRoom, players: data.players }));
       }
-      setGameHasStarted(true); // Signal that game has started
+      setGameHasStarted(true);
     };
 
-    // Updated: handle new gameOver payload (with scores)
     const onGameOver = (data) => {
       setGameOver(data);
       if (data.state) {
         setGameState(data.state);
       }
-      setGameHasStarted(false); // Reset on game over
+      setGameHasStarted(false);
+      setRematch({ requestedBy: null, acceptedBy: null }); // Reset rematch state on game over
       if (data.scores) {
         setRoom((prevRoom) => ({
           ...prevRoom,
@@ -71,24 +76,37 @@ export const AppProvider = ({ children }) => {
       }
     };
 
+    const onRematchRequested = ({ requestedBy }) => {
+      setRematch(prev => ({ ...prev, requestedBy }));
+    };
+
+    const onError = (message) => {
+      setError(message);
+      setTimeout(() => setError(null), 5000); // Clear error after 5 seconds
+    };
+    
     socket.on('roomCreated', onRoomCreated);
-    socket.on('roomJoined', onRoomJoined);
+    socket.on('roomJoined', onJoinedRoom);
     socket.on('playerJoined', onPlayerJoined);
     socket.on('symbolChosen', onSymbolChosen);
     socket.on('gameStarted', onGameStarted);
     socket.on('moveMade', ({ state }) => setGameState(state));
     socket.on('gameOver', onGameOver);
+    socket.on('rematchRequested', onRematchRequested);
+    socket.on('error', onError);
 
     return () => {
-      socket.off('roomCreated', onRoomCreated);
-      socket.off('roomJoined', onRoomJoined);
-      socket.off('playerJoined', onPlayerJoined);
-      socket.off('symbolChosen', onSymbolChosen);
-      socket.off('gameStarted', onGameStarted);
+      socket.off('roomCreated');
+      socket.off('roomJoined');
+      socket.off('playerJoined');
+      socket.off('symbolChosen');
+      socket.off('gameStarted');
       socket.off('moveMade');
-      socket.off('gameOver', onGameOver);
+      socket.off('gameOver');
+      socket.off('rematchRequested');
+      socket.off('error');
     };
-  }, []);
+  }, [navigate]);
 
   const value = {
     socket,
@@ -96,11 +114,14 @@ export const AppProvider = ({ children }) => {
     room,
     gameState,
     gameOver,
-    gameHasStarted, // Expose the new state
+    gameHasStarted,
+    error,
+    rematch,
     setPlayer,
     setRoom,
     setGameState,
     setGameOver,
+    setRematch,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

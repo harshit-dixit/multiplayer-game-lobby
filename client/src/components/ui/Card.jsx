@@ -1,15 +1,19 @@
 import React from 'react';
-import '../../App.css';
 
 const Card = ({ children, style, ...props }) => {
   const cardStyle = {
-    background: 'rgba(255, 255, 255, 0.85)',
+    backgroundColor: 'var(--color-glass-bg)',
+    borderRadius: 'var(--border-radius)',
+    padding: 'var(--card-padding)',
+    border: '1px solid var(--color-border)',
+    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
     backdropFilter: 'blur(10px)',
-    ...style
+    WebkitBackdropFilter: 'blur(10px)',
+    ...style,
   };
 
   return (
-    <div className="card" style={cardStyle} {...props}>
+    <div style={cardStyle} {...props}>
       {children}
     </div>
   );

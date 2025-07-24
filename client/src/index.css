@@ -1,25 +1,40 @@
-/* Global Styles for Multiplayer Game Lobby */
+@import url('https://fonts.googleapis.com/css2?family=Lilita+One&display=swap');
+
 :root {
-  --color-primary: #1E88E5;
-  --color-secondary: #43A047;
-  --color-accent: #FFC107;
-  --color-bg: #F7F9FC;
-  --color-surface: #FFFFFF;
-  --color-text-primary: #212121;
-  --color-text-secondary: #424242;
-  --radius: 12px;
-  --shadow: 0 2px 8px rgba(30, 136, 229, 0.08);
-  --spacing: 16px;
+  /* Color Palette */
+  --color-primary: #4A90E2;      /* A bright, friendly blue */
+  --color-secondary: #50E3C2;   /* A vibrant teal/green */
+  --color-accent: #F5A623;       /* A warm, energetic orange */
+  --color-background: #1a202c;  /* A deep, dark navy */
+  --color-text: #E2E8F0;         /* A soft, off-white */
+  --color-text-dark: #2D3748;   /* A darker text for light backgrounds */
+  --color-glass-bg: rgba(255, 255, 255, 0.1);
+  --color-border: rgba(255, 255, 255, 0.2);
+  --color-error: #e53e3e;        /* A clear red for errors */
+
+  /* Font */
+  --font-family-main: 'Lilita One', cursive;
+  
+  /* UI Dimensions */
+  --border-radius: 12px;
+  --card-padding: 2rem;
+  --button-padding: 0.75rem 1.5rem;
 }
 
-html, body, #root {
-  height: 100%;
+body {
   margin: 0;
-  padding: 0;
-  font-family: 'Inter', 'Roboto', Arial, sans-serif;
-  color: var(--color-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* The background is now handled by the PixiBackground component */
+  color: var(--color-text);
+  font-family: var(--font-family-main);
+  letter-spacing: 1px;
 }
 
-* {
-  box-sizing: border-box;
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
 }

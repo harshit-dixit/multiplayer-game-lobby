@@ -1,138 +1,126 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import '../App.css';
-import Card from '../components/ui/Card';
-import Input from '../components/ui/Input';
-import Button from '../components/ui/Button';
 import { AppContext } from '../context/AppContext';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
 import WaitingRoom from '../components/WaitingRoom';
 
 const LobbyScreen = () => {
-  const { socket, room, player, gameHasStarted } = useContext(AppContext);
+  const { socket, room, error } = useContext(AppContext);
   const navigate = useNavigate();
-  const { gameType, roomCode: roomCodeParam } = useParams();
-
+  const { gameType, roomCode: paramRoomCode } = useParams();
+  
   const [name, setName] = useState('');
-  const [roomCode, setRoomCode] = useState(roomCodeParam || '');
-  const [view, setView] = useState(roomCodeParam ? 'join' : 'create');
-
-  // Navigate to the game screen only when the game has officially started
-  useEffect(() => {
-    if (gameHasStarted && room && room.roomCode) {
-      navigate(`/game/${room.gameType}/${room.roomCode}`);
-    }
-  }, [gameHasStarted, room, navigate]);
+  const [roomCode, setRoomCode] = useState('');
+  const [activeTab, setActiveTab] = useState('create');
+  const [localError, setLocalError] = useState('');
+  const [isConnected, setIsConnected] = useState(socket.connected);
 
   useEffect(() => {
-    if (roomCodeParam) {
-      setRoomCode(roomCodeParam);
-      setView('join');
+    if (room && room.roomCode && !paramRoomCode) {
+      navigate(`/lobby/${gameType}/${room.roomCode}`);
     }
-  }, [roomCodeParam]);
+  }, [room, gameType, navigate, paramRoomCode]);
 
-  const handleCreateRoom = (e) => {
-    e.preventDefault();
+  const handleCreateRoom = () => {
+    if (!name.trim()) {
+      setLocalError('Please enter your name.');
+      return;
+    }
+    setLocalError('');
     socket.emit('createRoom', { name, gameType });
   };
 
-  const handleJoinRoom = (e) => {
-    e.preventDefault();
-    socket.emit('joinRoom', { name, roomCode, gameType });
+  const handleJoinRoom = () => {
+    if (!name.trim() || !roomCode.trim()) {
+      setLocalError('Please enter your name and a room code.');
+      return;
+    }
+    setLocalError('');
+    socket.emit('joinRoom', { roomCode, name });
   };
 
-  // Add symbol selection handler
-  const handleChooseSymbol = (symbol) => {
-    if (room && room.roomCode) {
-      socket.emit('chooseSymbol', { roomCode: room.roomCode, symbol });
-    }
-  };
-  // Add start game handler
-  const handleStartGame = () => {
-    if (room && room.roomCode) {
-      socket.emit('startGame', { roomCode: room.roomCode });
-    }
-  };
-  // Show WaitingRoom if room exists and has players
-  if (room && room.players && room.players.length > 0) {
-    return (
-      <div className="app-container" style={{ position: 'relative', zIndex: 1, backgroundColor: 'transparent' }}>
-        <Card style={{ width: 'clamp(300px, 50vw, 450px)', textAlign: 'center' }}>
-          <WaitingRoom
-            room={room}
-            player={player}
-            onChooseSymbol={handleChooseSymbol}
-            onStartGame={handleStartGame}
-          />
-        </Card>
-      </div>
-    );
+  useEffect(() => {
+    if(socket.connected) setIsConnected(true);
+
+    const onConnect = () => setIsConnected(true);
+    const onDisconnect = () => setIsConnected(false);
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
+  }, [socket]);
+
+  if (paramRoomCode) {
+    return <WaitingRoom />;
   }
+  
+  const renderForm = () => {
+    if (activeTab === 'create') {
+      return (
+        <>
+          <h2 style={{ marginBottom: '1.5rem', color: 'var(--color-secondary)' }}>Create a New Game</h2>
+          <Input 
+            type="text" 
+            placeholder="Enter your name" 
+            value={name}
+            onChange={(e) => setName(e.target.value)} 
+          />
+          <Button onClick={handleCreateRoom} style={{ marginTop: '1rem', width: '100%' }} disabled={!isConnected}>Create Room</Button>
+        </>
+      );
+    }
+    
+    return (
+      <>
+        <h2 style={{ marginBottom: '1.5rem', color: 'var(--color-secondary)' }}>Join a Game</h2>
+        <Input 
+          type="text" 
+          placeholder="Enter your name" 
+          value={name}
+          onChange={(e) => setName(e.target.value)} 
+          style={{ marginBottom: '1rem' }}
+        />
+        <Input 
+          type="text" 
+          placeholder="Enter room code" 
+          value={roomCode}
+          onChange={(e) => setRoomCode(e.target.value)} 
+        />
+        <Button onClick={handleJoinRoom} style={{ marginTop: '1rem', width: '100%' }} disabled={!isConnected}>Join Room</Button>
+      </>
+    );
+  };
 
   return (
-    <div className="app-container" style={{ position: 'relative', zIndex: 1, backgroundColor: 'transparent' }}>
-      <Card style={{ width: 'clamp(300px, 50vw, 450px)', textAlign: 'center' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
-          <Button
-            onClick={() => setView('create')}
-            style={{
-              background: view === 'create' ? 'var(--color-primary)' : 'transparent',
-              color: view === 'create' ? '#fff' : 'var(--color-text-primary)',
-              border: '1px solid var(--color-primary)',
-              borderRadius: '8px 0 0 8px',
-              margin: 0,
-            }}
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+      <Card style={{ width: 'clamp(350px, 90vw, 450px)', textAlign: 'center' }}>
+        <div style={{ display: 'flex', marginBottom: '2rem' }}>
+          <Button 
+            variant={activeTab === 'create' ? 'primary' : 'secondary'}
+            onClick={() => setActiveTab('create')} 
+            style={{ flex: 1, marginRight: '0.5rem', borderBottomLeftRadius: activeTab === 'join' ? 0 : 'var(--border-radius)', borderBottomRightRadius: 0 }}
           >
-            Create Room
+            Create
           </Button>
-          <Button
-            onClick={() => setView('join')}
-            style={{
-              background: view === 'join' ? 'var(--color-primary)' : 'transparent',
-              color: view === 'join' ? '#fff' : 'var(--color-text-primary)',
-              border: '1px solid var(--color-primary)',
-              borderRadius: '0 8px 8px 0',
-              margin: 0,
-            }}
+          <Button 
+            variant={activeTab === 'join' ? 'primary' : 'secondary'}
+            onClick={() => setActiveTab('join')}
+            style={{ flex: 1, marginLeft: '0.5rem', borderBottomLeftRadius: 0, borderBottomRightRadius: activeTab === 'create' ? 0 : 'var(--border-radius)' }}
           >
-            Join Room
+            Join
           </Button>
         </div>
-
-        {view === 'create' ? (
-          <form onSubmit={handleCreateRoom}>
-            <h2 style={{ marginBottom: '1.5rem' }}>Create a New Game Room</h2>
-            <Input
-              type="text"
-              placeholder="Enter your name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              style={{ marginBottom: '1rem' }}
-            />
-            <Button type="submit">Create</Button>
-          </form>
-        ) : (
-          <form onSubmit={handleJoinRoom}>
-            <h2 style={{ marginBottom: '1.5rem' }}>Join an Existing Room</h2>
-            <Input
-              type="text"
-              placeholder="Enter your name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              style={{ marginBottom: '1rem' }}
-            />
-            <Input
-              type="text"
-              placeholder="Enter room code"
-              value={roomCode}
-              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-              required
-              style={{ marginBottom: '1.5rem' }}
-            />
-            <Button type="submit">Join</Button>
-          </form>
-        )}
+        
+        {renderForm()}
+        
+        {localError && <p style={{ color: 'var(--color-error)', marginTop: '1rem', fontWeight: 'bold' }}>{localError}</p>}
+        {error && <p style={{ color: 'var(--color-error)', marginTop: '1rem', fontWeight: 'bold' }}>{error}</p>}
       </Card>
     </div>
   );
