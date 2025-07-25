@@ -33,9 +33,15 @@ const HomeScreen = () => {
         </p>
         <Button 
           onClick={() => navigate('/lobby/TicTacToe')}
-          style={{ width: '100%', fontSize: '1.5rem' }}
+          style={{ width: '100%', fontSize: '1.5rem', marginBottom: '1rem' }}
         >
           Play Tic-Tac-Toe
+        </Button>
+        <Button
+          onClick={() => navigate('/lobby/ConnectFour')}
+          style={{ width: '100%', fontSize: '1.5rem' }}
+        >
+          Play Connect Four
         </Button>
       </Card>
     </div>

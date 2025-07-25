@@ -3,10 +3,11 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const rooms = require('./rooms');
-const { createGame, makeMove } = require('./ticTacToe');
+const ticTacToe = require('./ticTacToe');
+const connectFour = require('./connectFour');
 
 const app = express();
-
+const colors = ['#ff0000', '#0000ff', '#00ff00', '#ffff00'];
 // Use cors middleware
 app.use(cors());
 
@@ -22,16 +23,21 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  socket.on('createRoom', ({ name }) => {
+  socket.on('createRoom', ({ name, gameType }) => {
     const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
     const player = { id: socket.id, name, symbol: null, score: 0 };
-    const game = createGame();
+    let game;
+    if (gameType === 'TicTacToe') {
+      game = ticTacToe.createGame();
+    } else {
+      game = { players: [player], board: [], boxes: [], turn: 0, scores: [] };
+    }
     const room = {
-      gameType: 'TicTacToe',
+      gameType,
       players: [player],
       state: game,
       roomCode,
-      availableSymbols: ['X', 'O'],
+      availableSymbols: gameType === 'TicTacToe' ? ['X', 'O'] : [],
     };
     rooms.set(roomCode, room);
     socket.join(roomCode);
@@ -41,12 +47,20 @@ io.on('connection', (socket) => {
   socket.on('joinRoom', ({ name, roomCode }) => {
     if (rooms.has(roomCode)) {
       const room = rooms.get(roomCode);
-      if (room.players.length < 2) {
+      const maxPlayers = room.gameType === 'TicTacToe' ? 2 : 4;
+      if (room.players.length < maxPlayers) {
         const player = { id: socket.id, name, symbol: null, score: 0 };
         room.players.push(player);
+        if (room.gameType === 'ConnectFour') {
+          room.state.players = room.players;
+          room.players.forEach((p, i) => {
+            p.symbol = p.name.charAt(0).toUpperCase();
+            p.color = colors[i];
+          });
+        }
         socket.join(roomCode);
         socket.emit('roomJoined', { roomCode, player, room });
-        socket.to(roomCode).emit('playerJoined', { player });
+        socket.to(roomCode).emit('playerJoined', { player, room });
       } else {
         socket.emit('error', 'Room is full');
       }
@@ -85,30 +99,47 @@ io.on('connection', (socket) => {
       // Set initial turn to the player who chose 'X'
       room.state.turn = 'X';
       io.to(roomCode).emit('gameStarted', { state: room.state, players: room.players });
+    } else if (room.gameType === 'ConnectFour' && room.players.length >= 2) {
+      room.state = connectFour.createGame(room.players);
+      io.to(roomCode).emit('gameStarted', { state: room.state, players: room.players });
     } else {
       socket.emit('error', 'Both players must choose a symbol before starting the game.');
     }
   });
 
-  socket.on('makeMove', ({ roomCode, index }) => {
+  socket.on('makeMove', ({ roomCode, index, move }) => {
     console.log(`[Server] Move received for room ${roomCode} at index ${index} from socket ${socket.id}`);
     const room = rooms.get(roomCode);
     const player = room.players.find((p) => p.id === socket.id);
-    if (!player || !player.symbol) {
-      console.log(`[Server] Invalid move in room ${roomCode}: Not player's turn or missing symbol.`);
-      return;
-    }
-    if (room.state.turn === player.symbol) {
-      const { state, winner, isDraw, combination } = makeMove(room.state, index, player.symbol);
-      room.state = state;
-      io.to(roomCode).emit('moveMade', { state });
-      if (winner) {
-        // Find winner by symbol
-        const winnerPlayer = room.players.find((p) => p.symbol === winner);
-        if (winnerPlayer) winnerPlayer.score += 1;
-        io.to(roomCode).emit('gameOver', { winner: winnerPlayer ? winnerPlayer.name : winner, winnerSymbol: winner, combination, scores: room.players.map(p => ({ name: p.name, symbol: p.symbol, score: p.score })), state });
-      } else if (isDraw) {
-        io.to(roomCode).emit('gameOver', { isDraw, scores: room.players.map(p => ({ name: p.name, symbol: p.symbol, score: p.score })), state });
+
+    if (room.gameType === 'TicTacToe') {
+      if (!player || !player.symbol) {
+        console.log(`[Server] Invalid move in room ${roomCode}: Not player's turn or missing symbol.`);
+        return;
+      }
+      if (room.state.turn === player.symbol) {
+        const { state, winner, isDraw, combination } = ticTacToe.makeMove(room.state, index, player.symbol);
+        room.state = state;
+        io.to(roomCode).emit('moveMade', { state });
+        if (winner) {
+          // Find winner by symbol
+          const winnerPlayer = room.players.find((p) => p.symbol === winner);
+          if (winnerPlayer) winnerPlayer.score += 1;
+          io.to(roomCode).emit('gameOver', { winner: winnerPlayer ? winnerPlayer.name : winner, winnerSymbol: winner, combination, scores: room.players.map(p => ({ name: p.name, symbol: p.symbol, score: p.score })), state });
+        } else if (isDraw) {
+          io.to(roomCode).emit('gameOver', { isDraw, scores: room.players.map(p => ({ name: p.name, symbol: p.symbol, score: p.score })), state });
+        }
+      }
+    } else {
+      const { state, error } = connectFour.makeMove(room.state, { player, side: move });
+      if (error) {
+        socket.emit('error', error);
+      } else {
+        room.state = state;
+        io.to(roomCode).emit('moveMade', { state });
+        if (state.isGameOver) {
+          io.to(roomCode).emit('gameOver', { winner: state.winner, scores: state.scores, state });
+        }
       }
     }
   });
@@ -122,7 +153,11 @@ io.on('connection', (socket) => {
         io.to(roomCode).emit('rematchRequested', { requestedBy: player });
       } else if (room.rematchRequestedBy.id !== player.id) {
         // Both players have requested a rematch, start a new game
-        room.state = createGame();
+        if (room.gameType === 'TicTacToe') {
+          room.state = ticTacToe.createGame();
+        } else {
+          room.state = connectFour.createGame(room.players);
+        }
         // Keep the same symbols
         io.to(roomCode).emit('gameStarted', { state: room.state, players: room.players });
         delete room.rematchRequestedBy; // Reset for next rematch

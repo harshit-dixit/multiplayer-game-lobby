@@ -3,10 +3,11 @@ import React, { useState } from 'react';
 const CreateJoinForm = ({ onCreateRoom, onJoinRoom }) => {
   const [name, setName] = useState('');
   const [roomCode, setRoomCode] = useState('');
+  const [gameType, setGameType] = useState('TicTacToe');
 
   const handleCreate = (e) => {
     e.preventDefault();
-    onCreateRoom(name);
+    onCreateRoom(name, gameType);
   };
 
   const handleJoin = (e) => {
@@ -16,7 +17,7 @@ const CreateJoinForm = ({ onCreateRoom, onJoinRoom }) => {
 
   return (
     <div>
-      <form onSubmit={handleCreate}>
+      <form>
         <input
           type="text"
           placeholder="Your Name"
@@ -24,7 +25,11 @@ const CreateJoinForm = ({ onCreateRoom, onJoinRoom }) => {
           onChange={(e) => setName(e.target.value)}
           required
         />
-        <button type="submit">Create Room</button>
+        <select value={gameType} onChange={(e) => setGameType(e.target.value)}>
+          <option value="TicTacToe">Tic Tac Toe</option>
+          <option value="ConnectFour">Connect Four</option>
+        </select>
+        <button type="button" onClick={handleCreate}>Create Room</button>
       </form>
 
       <hr />
